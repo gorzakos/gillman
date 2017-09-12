@@ -19,7 +19,7 @@ module.exports.loop = function() {
     profiler.wrap(function () {
         // Main.js logic should go here.
 
-        //memoryWipe();
+        memoryWipe();
         PathFinder.use(true);
 
         //Garbage Collection

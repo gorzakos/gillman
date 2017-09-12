@@ -17,45 +17,46 @@ function roomLayout(roomName) {
     let thisRoomsDefenses = defenses.planDefenses(roomName);
     defenses.drawDefenses(thisRoomsDefenses, roomName);
 
-
-    let roadPositions = [];
-    let structurePositions = [];
-
-    // preliminary pathing - saves a costmatrix with a gravity well & burn in of prelim paths between points of interest
+    // layer 1.5 preliminary pathing - saves a costmatrix with a gravity well & burn in of prelim paths between points of interest
     let prelim = preliminaryPathing(roomName);
     drawPoiCircle(roomName, prelim.poiCircle);
     let controllerArray = prelim.controllerArray;
     let sourceArray = prelim.sourceArray;
 
+
     // layer 2 - source to controller. Work spots, energy distribution, roads.
 
-    let controllerLayout = getControllerLayout(roomName, controllerArray, sourceArray);
-
-    let energySpots = _.flatMap(controllerLayout.sourceControllerReferences, scr =>[scr.collectEnergySpot, scr.energyDistributionSpot]);
-    let permanentWorkPositions = _.flatMap(controllerLayout.sourceControllerReferences, scr =>[scr.harvestSpot, scr.upgradeSpot]);
-
-
-    let controllerPaths = _.map(controllerLayout.sourceControllerReferences, scr => scr.path);
-    for (let i in controllerPaths) {
-        let path = _.slice(controllerPaths[i].path, 1, controllerPaths[i].path.length - 1);
-        new RoomVisual(roomName).poly(_.map(path, p =>[p.x, p.y]));
-
-        roadPositions = roadPositions.concat(path);
-
+    function collectEnergySpots(controllerLayout){
+        return  _.flatMap(controllerLayout.sourceControllerReferences, scr =>[scr.collectEnergySpot, scr.energyDistributionSpot]);
     }
+
+    function collectPermanentWorkPositions(controllerLayout){
+        return _.flatMap(controllerLayout.sourceControllerReferences, scr =>[scr.harvestSpot, scr.upgradeSpot]);
+    }
+
+    function getControllerPaths(controllerLayout){
+        return _.map(controllerLayout.sourceControllerReferences, scr => scr.path);
+    }
+
+    function drawControllerPathsAndAddToRoadPositions(controllerPaths){
+        let roadPositions = [];
+        for (let i in controllerPaths) {
+            let path = _.slice(controllerPaths[i].path, 1, controllerPaths[i].path.length - 1);
+            new RoomVisual(roomName).poly(_.map(path, p =>[p.x, p.y]));
+            roadPositions = roadPositions.concat(path);
+        }
+        return roadPositions;
+    }
+
+    let controllerLayout = getControllerLayout(roomName, controllerArray, sourceArray);
+    let energySpots = collectEnergySpots(controllerLayout);
+    let permanentWorkPositions = collectPermanentWorkPositions(controllerLayout);
+    let controllerPaths = getControllerPaths(controllerLayout);
+    let roadPositions = drawControllerPathsAndAddToRoadPositions(controllerPaths);
 
 
 
     // layer 3 -  spawn location, source to spawn, road, extension locations
-
-    let preferredSpawnLocation = findPreferredSpawnLocation() ;
-    structurePositions.push(preferredSpawnLocation);
-
-    let sourcesPaths = [];
-
-    //let shortestSourceControllerReference = getShortestPath(controllerLayout.sourceControllerReferences);
-    //let closerSource = _.find(sourceArray, s => s.id === shortestSourceControllerReference.sourceId);
-
 
     function findPreferredSpawnLocation(){
         /* logic taken from first crack at 2 source room
@@ -82,43 +83,26 @@ function roomLayout(roomName) {
         return Game.spawns[Object.keys(Game.spawns)[0]].pos;
     }
 
-    for ( let index in sourceArray ){
-        let source = sourceArray[index];
-        let sourceToSpawnPath = getPathBetween(source.pos, preferredSpawnLocation,1);
-        sourcesPaths.push(sourceToSpawnPath);
-        let path = _.slice(sourceToSpawnPath, 1, sourceToSpawnPath.length - 1);
-        roadPositions = roadPositions.concat(path);
-        new RoomVisual(roomName).poly(_.map(path, p =>[p.x, p.y]));
+    function drawPreferredSpawnLocation(preferredSpawnLocation) {
+        new RoomVisual(roomName).circle(preferredSpawnLocation.x, preferredSpawnLocation.y, {
+            radius: .75,
+            opacity: .25,
+            stroke: '#000000',
+            fill: '#ffff00'
+        });
     }
-    if (sourceArray.length < 2) {
-        //spawn goes near the shortest path to the controller.
-    }
-    else if (sourceArray.length === 2) {
-        /*
-        //spawn goes on path between sources
-        // determine which source is closer to the controller
-        let fartherSource = sourceArray[0];
-        if (closerSource === sourceArray[0]) { fartherSource = sourceArray[1]; }
 
-        sourcesPaths = [getPathBetween(closerSource.pos, fartherSource.pos,1)]; // range 1
-        for (let i in sourcesPaths) {
-            let path = _.slice(sourcesPaths[i].path, 1, sourcesPaths[i].path.length - 1);
+    function getAndDrawSourcesPaths(sourceArray,roadPositions){
+        let sourcesPaths = []
+        for ( let index in sourceArray ){
+            let source = sourceArray[index];
+            let sourceToSpawnPath = getPathBetween(source.pos, preferredSpawnLocation,1);
+            sourcesPaths.push(sourceToSpawnPath);
+            let path = _.slice(sourceToSpawnPath, 1, sourceToSpawnPath.length - 1);
             roadPositions = roadPositions.concat(path);
             new RoomVisual(roomName).poly(_.map(path, p =>[p.x, p.y]));
-        }*/
-
-        let extensionArray = planExtensionLocations(sourcesPaths);
-
-        drawExtensions(extensionArray);
-
-
-    }
-    else {
-        //spawn goes on shortest path to the next closest source
-    }
-
-    if ( preferredSpawnLocation ) {
-        new RoomVisual(roomName).circle(preferredSpawnLocation.x, preferredSpawnLocation.y, { radius: .75, opacity: .25, stroke: '#000000', fill: '#ffff00' })
+        }
+        return sourcesPaths;
     }
 
     function planExtensionLocations(sourcesPaths){
@@ -154,6 +138,28 @@ function roomLayout(roomName) {
         }
     }
 
+
+    let preferredSpawnLocation = findPreferredSpawnLocation() ;
+    drawPreferredSpawnLocation(preferredSpawnLocation);
+    let structurePositions = [];
+    structurePositions.push(preferredSpawnLocation);
+
+    let sourcesPaths = getAndDrawSourcesPaths(sourceArray,roadPositions);
+
+    if (sourceArray.length < 2) {
+
+    }
+    else if (sourceArray.length === 2) {
+
+        let extensionArray = planExtensionLocations(sourcesPaths);
+
+        drawExtensions(extensionArray);
+
+
+    }
+    else {
+        //spawn goes on shortest path to the next closest source
+    }
 
 }
 
@@ -374,15 +380,14 @@ function SourceControllerReference() {
 
 SourceControllerReference.prototype.assignToSource = function (source) {
     Memory.sources[source.id].controllerReference = this;
-
-
+    // maybe this section is to move harvestSpot to the first clearspot?
     let harvestSpot = JSON.parse(JSON.stringify(this.harvestSpot)); // isEquals doesn't work without this for some reason.
     Memory.sources[source.id].clearSpots = _.differenceWith(Memory.sources[source.id].clearSpots, [harvestSpot], _.isEqual);
     Memory.sources[source.id].clearSpots.unshift(harvestSpot);
 };
 
 function getControllerLayout(roomName, controllerArray, sourceArray) {
-    if (controllerArray.length < 1) { return null }
+    if (controllerArray.length < 1) { return null; }
     let controller = controllerArray[0]; // we've been promised there will only ever be 0 or 1 controller in a room.
 
     if (!Memory.rooms[roomName].layout.status.controllerLayoutPlanned) { //change to true when done
